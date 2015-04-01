@@ -26,82 +26,135 @@ $(function(){
    style('@media (min-width: 992px) {.navbar-fixed-top {padding-left: 300px;padding-right:300px;z-index:1020;background-color:#0073c6;}}').
    style('.navbar-brand {padding:9px;} #article {padding-top:50px;}');
 
-  var list = getFeeds();
+
 //   var title = getTitle();
 //   var siteMap = getSiteMap();
 //   var nav = getNav();
 
   L.tmpl('tmplr');
-  $('body').html(L.T('tmplr'));
   
-  list.forEach(function(news){
-    var html = '<li class="list-group-item"><a class="list-group-item-heading" data-href="' + news.href + '">' + news.title + '</a><p class="list-group-item-text">' + news.desc + '</p></li>';
-    if (news.featured) {
-      $('#featured').append(html);
-    } else {
-      $('#regular').append(html);
-    }
-    
-  });
+  var P = new Page(L);
+  
+  P.buildList(new ListBuilder(L));
   
   $('.scrollPane').slimScroll({
     height: '100%'
+  }).bind('slimscroll', function(e, pos){
+    console.log(pos);
   });
   
   $('.list-group-item-heading').click(function(){
-//     $('#article').load($(this).attr('data-href') + ' .finCnt', function(data){
-//       console.log(data);
-      
-//     });
-    $.ajax({
-      url: $(this).attr('data-href'), 
-      method: 'GET'
-    }).done(function(data){
-      $('.cnt').remove();
-      $('#comments').html('');
-      
-      var html = $(data);
-      $('#article').append(html.find('.cnt'));
-      
-      var title = html.find('h1').text();
-      
-      $('#article .page-header h1').text(title);
-      
-      var source = html.find('.info').contents().get(0);
-      $('#article .page-header p').html(source);
-      
-      var comments = [];
-      var its = html.find('.it');
-      
-      its.each(function(){
-        var user = $(this).find('.maj');
-        var message = $(this).find('.ugc');
-        
-        if (user.length > 0) {
-          var post = {};
-          
-          var timestamp = user.find('em').text();
-          moment.lang('zh-CN');
-          var time = moment(timestamp).fromNow();
-          post.floor = $.trim(user.contents().get(0).nodeValue);
-          post.author = user.find('a').text();
-          post.message = $.trim(message.text());
-          post.time = time;
-          
-          comments.push(post);
-        } 
-      });
-      comments.forEach(function(comment){
-        $('#comments').append('<li class="list-group-item"><span class="badge">' + comment.floor + '</span><h5 class="list-group-item-heading">' + comment.message + '</h5><p class="list-group-item-text text-muted">' + comment.author + ' <small>' + comment.time + '</small></p></li>');
-      });
-      
-      $('#comments').prepend('<li class="list-group-item"><form class="form-inline" role="form"><div class="input-group"><input class="form-control" rows="1" name="r_content"/><span class="input-group-btn"><button type="button" class="btn btn-primary">Post</button></span></div></form></li>');
-      
-    });
+    (new Page()).buildArticle(new PageBuilder(), $(this).attr('data-href'));
   });
   
   autosize($('textarea'));
 });
+
+function PageBuilder(){
+  var _this = this;
+
+  _this.process = _process;
+
+  function _process(page) {
+    $('.cnt').remove();
+    $('#comments').html('');
+
+    $('#article').append(page.article);
+    $('#article .page-header h1').text(page.title);
+    $('#article .page-header p').html(page.source);
+
+    var $comments = $('#comments');
+    page.comments.forEach(function(comment){
+      $comments.append('<li class="list-group-item"><span class="badge">' + comment.floor + '</span><h5 class="list-group-item-heading">' + comment.message + '</h5><p class="list-group-item-text text-muted">' + comment.author + ' <small>' + comment.time + '</small></p></li>');
+    });
+
+    $comments.prepend('<li class="list-group-item"><form class="form-inline" role="form"><div class="input-group"><input class="form-control" rows="1" name="r_content"/><span class="input-group-btn"><button type="button" class="btn btn-primary">Post</button></span></div></form></li>');
+
+  }
+}
+
+function ListBuilder(/* Loader */ L) {
+  var _this = this;
+  
+  _this.process = _process;
+  
+  function _process(page) {
+    $('body').html(L.T('tmplr'));
+    
+    page.feeds.forEach(function(news, index){
+      var html = '<li class="list-group-item"><a class="list-group-item-heading" data-href="' + news.href + '">' + news.title + '</a><p class="list-group-item-text">' + news.desc + '</p></li>';
+      if (news.featured) {
+        $('#featured').append(html);
+      } else {
+        $('#regular').append(html);
+      }
+      
+      if (index == 1) {
+        (new Page()).buildArticle(new PageBuilder(), news.href);
+      }
+    });
+  }
+}
+
+function Page() {
+  var _this = this;
+  
+  _this.buildArticle = _buildArticle;
+  _this.buildList = _buildList;
+  
+  function _buildList(/* ListBuilder*/ Builder) {
+    _this.Builder = Builder;
+    
+    var page = {};
+    page.feeds = getFeeds();
+    
+    _this.Builder.process(page);
+  }
+  
+  
+  function _buildArticle(/* PageBuilder*/ Builder, url) {
+    _this.Builder = Builder;
+    _retrieve(url, _page);
+  }
+  
+  function _page(data) {
+    var jqDOM = $(data);
+    var page = {};
+    
+    page.article = jqDOM.find('.cnt');
+    page.title = jqDOM.find('h1').text();
+    page.source = jqDOM.find('.info').contents().get(0);
+    page.comments = [];
+    
+    jqDOM.find('.it').each(function(){
+      var user = $(this).find('.maj');
+      var message = $(this).find('.ugc');
+
+      if (user.length > 0) {
+        var post = {};
+
+        var timestamp = user.find('em').text();
+        moment.lang('zh-CN');
+        var time = moment(timestamp).fromNow();
+        post.floor = $.trim(user.contents().get(0).nodeValue);
+        post.author = user.find('a').text();
+        post.message = $.trim(message.text());
+        post.time = time;
+
+        page.comments.push(post);
+      } 
+    });
+    
+    _this.Builder.process(page);
+  }
+  
+  function _retrieve(url, process) {
+    $.ajax({
+      url: url,
+      method: 'GET'
+    }).done(process);
+  }
+}
 
 function Loader() {
   var _this = this;
